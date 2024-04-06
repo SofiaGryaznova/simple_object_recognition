@@ -1,2 +1,112 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+import sys
+
+from PyQt6.QtGui import QImage, QPixmap
+from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QLabel, QPushButton, QFileDialog, QApplication
+from tensorflow.keras import datasets, layers, models
+from PIL import Image
+import numpy as np
+
+
+class Image_Classifier():
+    def __init__(self):
+        self.class_names = None
+        self.model = self.create_model()
+        self.class_names = ['Самолёт', "Авто", "Собака", "Птица", "Олень", "Кошка", "Лягушка", "Лошадь",
+                            "Грузовик","Корабль", "Стул"]
+
+    def create_model(self):
+        model = models.Sequential([
+            layers.Conv2D(32, (3, 3), activation="relu", input_shape=(32, 32, 3)),
+            layers.MaxPooling2D(2, 2),
+            layers.Conv2D(64, (3,3), activation="relu"),
+            layers.Conv2D(64, (3, 3), activation="relu"),
+            layers.MaxPooling2D(2, 2),
+            layers.Flatten(),
+            layers.Dense(64, activation="relu"),
+            layers.Dense(10, activation="softmax")
+        ])
+        model.compile(optimizer="adam", loss="sparse_categorical_crossentropy", metrics=["accuracy"])
+        return model
+
+    def train(self, train_image, train_labels, epoch, batch_size, validation_split):
+        self.model.fit(train_image, train_labels, epochs=epoch, batch_size=batch_size, validation_split=validation_split)
+
+    def predict_img(self, img_path):
+        img = Image.open(img_path).resize((32, 32)).convert("RGB")
+        img_array = np.array(img) / 255.0
+        predict = self.model.predict(img_array.reshape(1, 32, 32, 3))
+        predicted_class = self.class_names[np.argmax(predict)]
+        return predicted_class, img_array
+
+
+class MainWindow(QMainWindow):
+    def __init__(self, classifier):
+        super().__init__()
+        self.classifier = classifier
+        self.initUI()
+
+    def initUI(self):
+        self.setWindowTitle("Image classifier")
+        self.setGeometry(100, 100, 400, 400)
+        self.central_widget = QWidget()
+        self.setCentralWidget(self.central_widget)
+
+        self.layout = QVBoxLayout(self)
+        self.central_widget.setLayout(self.layout)
+
+        self.label =QLabel()
+        self.label.setScaledContents(True)
+        self.layout.addWidget(self.label)
+
+        self.button = QPushButton("Load Image", self)
+        self.button.clicked.connect(self.load_image)
+        self.layout.addWidget(self.button)
+
+        self.result_label = QLabel()
+        self.layout.addWidget(self.result_label)
+
+        self.setStyleSheet("""
+                  QLabel {
+                       font-size: 16px;
+                       font-weight: bold;
+                  }
+                  QPushButton{
+                       background-color: #FCBFA0;
+                       color: white;
+                       font-size: 18px;
+                       font-weight: bold;
+                       padding: 10px 20px;
+                       border: none;
+                       border-radius: 4px;
+                  }
+                  QPushButton:hover{
+                      background-color: #75f049;
+                  }
+               """)
+
+    def load_image(self):
+        file_name, _ = QFileDialog.getOpenFileName(self, "OpenImage File", "", "Images(*.png *.jpg *.jpeg)")
+        if file_name:
+            predicted_class, img_array = self.classifier.predict_img(file_name)
+            img_qt = QImage(img_array * 255, 32, 32, QImage.Format.Format_RGB888)
+            pixmap = QPixmap.fromImage(img_qt)
+            self.label.setPixmap(pixmap)
+            self.result_label.setText(predicted_class)
+
+(train_images, train_labels), (test_images, test_labels) = datasets.cifar10.load_data()
+
+train_images = train_images / 255.0
+test_images = test_images / 255.0
+
+classifier = Image_Classifier()
+classifier.train(train_images, train_labels, 1, 32, 0.2)
+
+app = QApplication(sys.argv)
+main_window = MainWindow(classifier)
+main_window.show()
+app.exec()
+
+
+
